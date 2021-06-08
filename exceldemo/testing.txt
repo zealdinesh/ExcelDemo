@@ -1,0 +1,215 @@
+@RestController
+public class SchoolAuditController {
+
+    CitySchoolService citySchoolService = new CitySchoolService();
+
+    @PostMapping(value = "/citySchoolsAudit", consumes = "application/json", produces = "application/json")
+    public ResponseEntity<AuditResult> readExcelData(@RequestBody CitySchools citySchools) throws IOException {
+        return new ResponseEntity<>(citySchoolService.compareObjects(Utility.dbMap.get(1), citySchools, new AuditResult()), HttpStatus.OK);
+    }
+
+    @GetMapping(value = "/getCitySchoolsData", produces = "application/json")
+    public ResponseEntity<CitySchools> getCitySchoolsData() throws IOException {
+        return new ResponseEntity<>(Utility.dbMap.get(2), HttpStatus.OK);
+    }
+}
+
+@Data
+public class AuditResult {
+    private int auditCityId;
+    private String auditCityName;
+    private String schoolDiff;
+    private String classRoomDiff;
+    private String secDiff;
+    private String studDiff;
+
+    public AuditResult() {
+    }
+
+    public AuditResult(int auditCityId, String auditCityName, String schoolDiff, String classRoomDiff, String secDiff, String studDiff) {
+        this.auditCityId = auditCityId;
+        this.auditCityName = auditCityName;
+        this.schoolDiff = schoolDiff;
+        this.classRoomDiff = classRoomDiff;
+        this.secDiff = secDiff;
+        this.studDiff = studDiff;
+    }
+}
+
+@Data
+public class CitySchools implements Comparable<CitySchools>{
+    private int cityId;
+    private String cityName;
+    private int noOfSchools;
+
+    @Autowired
+    private List<School> schoolList;
+
+    public CitySchools() {
+    }
+
+    public CitySchools(int cityId, String cityName, int noOfSchools, List<School> schoolList) {
+        this.cityId = cityId;
+        this.cityName = cityName;
+        this.noOfSchools = noOfSchools;
+        this.schoolList = schoolList;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        CitySchools that = (CitySchools) o;
+        return cityId == that.cityId && noOfSchools == that.noOfSchools && cityName.equals(that.cityName) && schoolList.equals(that.schoolList);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(cityId, cityName, noOfSchools, schoolList);
+    }
+
+    @Override
+    public int compareTo(CitySchools o) {
+        if (this.cityId == o.cityId)
+            return 0;
+        else if (this.cityId > o.cityId)
+            return 1;
+        else
+            return -1;
+    }
+}
+
+
+
+public class CitySchoolService {
+
+    public boolean compareTwoObjects(CitySchools dbCs, CitySchools reqCs) {
+
+        if (dbCs.equals(reqCs)) {
+            System.out.println("Objects are same");
+            return true;
+        } else {
+            System.out.println("Objects are different");
+            return false;
+        }
+    }
+
+    public boolean doCompareCitySchools(CitySchools dbCs, CitySchools reqCs) {
+        int returnValue = Comparator.comparing(CitySchools::getCityId)
+                .thenComparing(CitySchools::getCityName)
+                .thenComparing(CitySchools::getNoOfSchools)
+                //.thenComparing(CitySchools::getSchoolList)
+                .compare(dbCs, reqCs);
+        if (returnValue != 0) {
+            return false;
+        }
+        return true;
+    }
+
+    public AuditResult compareObjects(CitySchools dbCs, CitySchools reqCs, AuditResult auditResult) {
+
+        if (dbCs.equals(reqCs)) {
+            System.out.println("Objects are same");
+            return auditResult;
+        } else {
+            StringBuffer schoolDiff = new StringBuffer();
+            StringBuffer classRoomDiff = new StringBuffer();
+            StringBuffer secDiff = new StringBuffer();
+            StringBuffer studDiff = new StringBuffer();
+
+            System.out.println("Objects are different");
+            for (School dbSc : dbCs.getSchoolList()) {
+                if (reqCs.getSchoolList() == null) {
+                    System.out.println("****Null**School****" + dbSc.getSchoolName());
+                    schoolDiff.append(dbSc.getSchoolName()+", ");
+                    continue;
+                }
+                if (!Stream.of(dbSc).anyMatch(e -> reqCs.getSchoolList().contains(e))) {
+                    Map<Integer, List<ClassRoom>> reqCrMap = getSchoolMap(reqCs.getSchoolList());
+                    List<ClassRoom> reqCrList = reqCrMap.get(dbSc.getSchoolId());
+                    System.out.println("******School****" + dbSc.getSchoolName());
+                    schoolDiff.append(dbSc.getSchoolName()+", ");
+
+                    for (ClassRoom dbCr : dbSc.getClassRoomList()) {
+                        if (reqCrList == null) {
+                            System.out.println("****Null**ClassRoom****" + dbCr.getClassRoomName());
+                            classRoomDiff.append(dbCr.getClassRoomName()+", ");
+                            continue;
+                        }
+                        if (!Stream.of(dbCr).anyMatch(e -> reqCrList.contains(e))) {
+                            Map<Integer, List<Section>> reqSecMap = getClassRoomMap(reqCrList);
+                            List<Section> reqSecList = reqSecMap.get(dbCr.getClassRoomId());
+                            System.out.println("******ClassRoom****" + dbCr.getClassRoomName());
+                            classRoomDiff.append(dbCr.getClassRoomName()+", ");
+
+                            for (Section dbSec : dbCr.getSectionList()) {
+                                if (reqSecList == null) {
+                                    System.out.println("****Null**Section****" + dbSec.getSectionName());
+                                    secDiff.append(dbSec.getSectionName()+", ");
+                                    continue;
+                                }
+                                if (!Stream.of(dbSec).anyMatch(e -> reqSecList.contains(e))) {
+                                    Map<Integer, List<Student>> reqStudMap = getSectionMap(reqSecList);
+                                    List<Student> reqStudList = reqStudMap.get(dbSec.getSectionId());
+                                    System.out.println("******Section****" + dbSec.getSectionName());
+                                    secDiff.append(dbSec.getSectionName()+", ");
+
+                                    for (Student dbStud : dbSec.getStudentList()) {
+                                        if (reqStudList == null) {
+                                            System.out.println("****Null**Student****" + dbStud.getStudentName());
+                                            studDiff.append(dbStud.getStudentName()+", ");
+                                            continue;
+                                        }
+                                        if (!Stream.of(dbStud).anyMatch(e -> reqStudList.contains(e))) {
+                                            System.out.println("******Student****" + dbStud.getStudentName());
+                                            studDiff.append(dbStud.getStudentName()+", ");
+                                        }
+                                    }
+
+                                }
+                            }
+
+
+                        }
+                    }
+
+                }
+            }
+            if(!"".equals(studDiff.toString().trim())) {
+                auditResult.setAuditCityId(1);
+                auditResult.setAuditCityName(dbCs.getCityName());
+                auditResult.setSchoolDiff(schoolDiff.toString());
+                auditResult.setClassRoomDiff(classRoomDiff.toString());
+                auditResult.setSecDiff(secDiff.toString());
+                auditResult.setStudDiff(studDiff.toString());
+            }
+            return auditResult;
+        }
+    }
+
+
+    //Class to Map
+    public Map getCityMap(List<CitySchools> cityList) {
+        Map<Integer, List<School>> mp = null;
+        return cityList.stream().collect(Collectors.toMap(c -> c.getCityId(), c -> c.getSchoolList()));
+    }
+
+    //Class to Map
+    public Map getSchoolMap(List<School> schoolList) {
+        Map<Integer, List<ClassRoom>> mp = null;
+        return schoolList.stream().collect(Collectors.toMap(c -> c.getSchoolId(), c -> c.getClassRoomList()));
+    }
+
+    //Class to Map
+    public Map getClassRoomMap(List<ClassRoom> classRoomList) {
+        Map<Integer, List<Section>> mp = null;
+        return classRoomList.stream().collect(Collectors.toMap(c -> c.getClassRoomId(), c -> c.getSectionList()));
+    }
+
+    //Class to Map
+    public Map getSectionMap(List<Section> sectionList) {
+        Map<Integer, List<Student>> mp = null;
+        return sectionList.stream().collect(Collectors.toMap(c -> c.getSectionId(), c -> c.getStudentList()));
+    }
+    
+    }
